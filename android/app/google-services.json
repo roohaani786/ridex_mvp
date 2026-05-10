@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "325044458119",
+    "project_id": "ridex-mvp",
+    "storage_bucket": "ridex-mvp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:325044458119:android:7c8ee9ba398e2adacb9e22",
+        "android_client_info": {
+          "package_name": "com.ridex.mvp.ridex_mvp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDQNW8BcJILSf0lfF1OkOeuakocX6PJbKA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
