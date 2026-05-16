@@ -2,10 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../controllers/location_picker_controller.dart';
+import '../models/ride_model.dart';
 import '../theme/app_theme.dart';
+import '../utilities/map_control_button.dart';
 
 class LocationPickerView extends GetView<LocationPickerController> {
-  const LocationPickerView({super.key});
+
+  final Function(LocationPoint)? onLocationSelected;
+  final Set<Polyline>? polylines;
+
+  const LocationPickerView({
+    super.key,
+    this.onLocationSelected,
+    this.polylines,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -13,188 +23,279 @@ class LocationPickerView extends GetView<LocationPickerController> {
       body: Stack(
         children: [
           _buildMap(),
-          _buildSearchBar(),
           _buildCenterPin(),
-          _buildMyLocationButton(),
+          _buildMapControls(),
           _buildBottomSheet(),
+          _buildSearchBar(),
         ],
       ),
     );
   }
 
+
+
   Widget _buildMap() {
-    return Obx(() {
-      final initialPos = controller.selectedPosition.value ??
-          const LatLng(19.0760, 72.8777);
-
-      return GoogleMap(
-        onMapCreated: controller.onMapCreated,
-
-        initialCameraPosition: CameraPosition(
-          target: initialPos,
-          zoom: 15,
-        ),
-
-        onCameraMove: controller.onCameraMove,
-        onCameraIdle: controller.onCameraIdle,
-
-        myLocationEnabled: true,
-        myLocationButtonEnabled: false,
-        zoomControlsEnabled: false,
-        mapToolbarEnabled: false,
-        compassEnabled: false,
-      );
-    });
+    return Obx(() => GoogleMap(
+      onMapCreated: controller.onMapCreated,
+      mapType: controller.mapType.value,
+      initialCameraPosition: const CameraPosition(
+        target: LatLng(17.3850, 78.4867),
+        zoom: 14,
+      ),
+      onCameraMove: controller.onCameraMove,
+      onCameraIdle: controller.onCameraIdle,
+      markers: Set<Marker>.of(controller.poiMarkers.values),
+      polylines: polylines ?? {},
+      myLocationEnabled: true,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: true,
+    ));
   }
 
   Widget _buildSearchBar() {
     return SafeArea(
+      bottom: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-        child: Column(
-          children: [
-            Material(
-              elevation: 4,
-              borderRadius: BorderRadius.circular(14),
-              child: TextField(
-                controller: controller.searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search location...',
-                  prefixIcon: GestureDetector(
-                    onTap: Get.back,
-                    child: const Icon(Icons.arrow_back_rounded),
-                  ),
-                  suffixIcon: Obx(() {
-                    print(controller.searchResults.value);
-                    return
-                    controller.searchController.text.isNotEmpty
-                        ? GestureDetector(
-                      onTap: () {
-                        // print(controller.searchResults.value);
-                        controller.searchController.clear();
-                        controller.searchResults.clear();
-                      },
-                      child: const Icon(Icons.close),
-                    )
-                        : const SizedBox.shrink();
-                  } ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-                onChanged: controller.searchLocation,
-                onSubmitted: controller.searchLocation,
-              ),
-            ),
-            Obx(() {
-              if (controller.searchResults.isEmpty) return const SizedBox.shrink();
-              return Material(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,           // ← critical, don't expand
+            children: [
+              // ── Text field ─────────────────────────────────────────────────
+              Material(
                 elevation: 4,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
+                child: TextField(
+                  controller: controller.searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search location...',
+                    prefixIcon: GestureDetector(
+                      onTap: Get.back,
+                      child: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    suffixIcon: Obx(() {
+                      if (controller.isSearching.value ||
+                          controller.isLoadingPlace.value) {
+                        return const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        );
+                      }
+                      return controller.searchController.text.isNotEmpty
+                          ? GestureDetector(
+                        onTap: () {
+                          controller.searchController.clear();
+                          controller.searchResults.clear();
+                        },
+                        child: const Icon(Icons.close),
+                      )
+                          : const SizedBox.shrink();
+                    }),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: controller.searchResults.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final loc = controller.searchResults[i];
-                      return ListTile(
-                        leading: const Icon(Icons.location_on_outlined,
-                            color: AppTheme.primary),
-                        title: Text(
-                          '${loc.latitude.toStringAsFixed(4)}, ${loc.longitude.toStringAsFixed(4)}',
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        dense: true,
-                        onTap: () => controller.selectSearchResult(loc),
-                      );
-                    },
-                  ),
+                  onChanged: controller.searchLocation,
+                  onSubmitted: controller.searchLocation,
                 ),
-              );
-            }),
-          ],
+              ),
+          
+              // ── Results dropdown ────────────────────────────────────────────
+              // Rendered in the same Column so it naturally appears directly
+              // below the search bar, and since _buildSearchBar is last in the
+              // Stack it renders above the bottom sheet and map controls.
+              Obx(() {
+                if (controller.searchResults.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Material(
+                  elevation: 8,                        // ← higher elevation = visually on top
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    constraints: const BoxConstraints(maxHeight: 260),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      itemCount: controller.searchResults.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, i) {
+                        final suggestion = controller.searchResults[i];
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 4),
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withOpacity(0.08),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.location_on_outlined,
+                                color: AppTheme.primary, size: 18),
+                          ),
+                          title: Text(
+                            suggestion.mainText,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: suggestion.secondaryText.isNotEmpty
+                              ? Text(
+                            suggestion.secondaryText,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          )
+                              : null,
+                          dense: true,
+                          onTap: () => controller.selectSearchResult(suggestion),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildCenterPin() {
-    return Center(
-      child: Obx(() {
-        final isLoading = controller.isLoadingAddress.value;
-        return AnimatedScale(
-          scale: isLoading ? 1.2 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.primary.withOpacity(0.3),
-                      blurRadius: 12,
-                      spreadRadius: 2,
+    return IgnorePointer(
+      child: Center(
+        child: Obx(() {
+          final isLoading = controller.isLoadingAddress.value;
+          return AnimatedScale(
+            scale: isLoading ? 1.15 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            // ── THE FIX: shift the whole pin UP by 50% of its height ──────────
+            // This makes the pin TIP (bottom of dot) sit exactly at screen
+            // centre, which is the coordinate the map reads. Without this,
+            // the tip is ~34px below the coordinate, causing visible deviation.
+            child: FractionalTranslation(
+              translation: const Offset(0, -0.5),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primary.withOpacity(0.35),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.location_on,
-                  color: AppTheme.primary,
-                  size: 32,
-                ),
+                    child: const Icon(
+                      Icons.sports_motorsports_sharp,
+                      color: AppTheme.primary,
+                      size: 32,
+                    ),
+                  ),
+                  Container(width: 2, height: 16, color: AppTheme.primary),
+                  Container(
+                    width: 8,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
               ),
-              Container(
-                width: 2,
-                height: 16,
-                color: AppTheme.primary,
-              ),
-              Container(
-                width: 8,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ],
-          ),
-        );
-      }),
+            ),
+          );
+        }),
+      ),
     );
   }
 
-  Widget _buildMyLocationButton() {
+  Widget _buildMapControls() {
     return Positioned(
       right: 16,
-      bottom: 220,
-      child: FloatingActionButton.small(
-        onPressed: controller.goToMyLocation,
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.primary,
-        elevation: 4,
-        child: const Icon(Icons.my_location_rounded),
+      bottom: 230,
+      child: Column(
+        children: [
+          // ── Dark / Light theme toggle ─────────────────────────────────
+          Obx(() {
+            final isDark = controller.isDarkMode.value;
+            return MapControlButton(
+              icon: isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+              tooltip: isDark ? 'Light mode' : 'Dark mode',
+              isActive: isDark,
+              onTap: controller.toggleMapTheme,
+            );
+          }),
+          const SizedBox(height: 8),
+
+          // ── Satellite toggle ──────────────────────────────────────────
+          Obx(() {
+            final isSatellite = controller.mapType.value == MapType.satellite;
+            return MapControlButton(
+              icon: isSatellite ? Icons.map_rounded : Icons.satellite_alt_rounded,
+              tooltip: isSatellite ? 'Normal view' : 'Satellite view',
+              isActive: isSatellite,
+              onTap: controller.toggleMapType,
+            );
+          }),
+          const SizedBox(height: 8),
+
+          // ── Zoom in ───────────────────────────────────────────────────
+          MapControlButton(
+            icon: Icons.add_rounded,
+            tooltip: 'Zoom in',
+            onTap: controller.zoomIn,
+          ),
+          const SizedBox(height: 4),
+
+          // ── Zoom out ──────────────────────────────────────────────────
+          MapControlButton(
+            icon: Icons.remove_rounded,
+            tooltip: 'Zoom out',
+            onTap: controller.zoomOut,
+          ),
+          const SizedBox(height: 8),
+
+          // ── My location ───────────────────────────────────────────────
+          MapControlButton(
+            icon: Icons.my_location_rounded,
+            tooltip: 'My location',
+            onTap: controller.goToMyLocation,
+          ),
+        ],
       ),
     );
   }
@@ -291,7 +392,15 @@ class LocationPickerView extends GetView<LocationPickerController> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: controller.confirmLocation,
+              onPressed: onLocationSelected != null
+                  ? () async {
+                final point = await controller.buildLocationPoint();
+
+                if (point == null) return;
+
+                onLocationSelected!(point);
+              }
+                  : controller.confirmLocation,
               child: const Text('Confirm Location'),
             ),
           ],

@@ -3,8 +3,10 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/ride_location.dart';
 import '../models/ride_model.dart';
@@ -37,7 +39,7 @@ class RideService extends GetxService {
   }) async {
     try {
       final user = UserService.to;
-      final myUserId = _generateUserId(); // Anonymous user ID
+      final myUserId = UserService.to.userId; // Anonymous user ID
       final rideCode = _generate4DigitCode();
 
       final position = await Geolocator.getCurrentPosition(
@@ -85,6 +87,7 @@ class RideService extends GetxService {
 
       // await startLocationStream(rideCode, myUserId);
 
+      await _saveActiveRide(rideCode);
       return ride;
     } catch (e) {
       Get.snackbar('Error', 'Failed to create ride: $e');
@@ -126,12 +129,111 @@ class RideService extends GetxService {
     _positionSub = null;
   }
 
+  static const _keyActiveRideCode = 'rydrx_active_ride';
+
+  // ─── Stop Management ─────────────────────────────────────────────────────
+
+  Future<void> addStop(String rideCode, LocationPoint stop) async {
+    try {
+      debugPrint('🟡 addStop called');
+      debugPrint('🟡 Ride Code: $rideCode');
+      debugPrint(
+        '🟡 Stop: ${stop.address} '
+            '(${stop.lat}, ${stop.lng})',
+      );
+
+      final doc = await _rides.doc(rideCode).get();
+
+      debugPrint('🟢 Firestore doc fetched');
+
+      if (!doc.exists) {
+        debugPrint('🔴 Ride document does not exist');
+        return;
+      }
+
+      final ride = RideModel.fromMap(doc.data()!);
+
+      debugPrint('🟢 Current stops count: ${ride.stops.length}');
+
+      final updatedStops = [...ride.stops, stop];
+
+      debugPrint('🟢 Updated stops count: ${updatedStops.length}');
+
+      await _rides.doc(rideCode).update({
+        'stops': updatedStops.map((s) => s.toMap()).toList(),
+      });
+
+      debugPrint('✅ Stop added successfully');
+
+    } catch (e, stackTrace) {
+      debugPrint('🔴 addStop error: $e');
+      debugPrint('🔴 StackTrace: $stackTrace');
+    }
+  }
+
+  Future<void> removeStop(String rideCode, int index) async {
+    try {
+      final doc = await _rides.doc(rideCode).get();
+      if (!doc.exists) return;
+
+      final ride = RideModel.fromMap(doc.data()!);
+      final updatedStops = [...ride.stops]..removeAt(index);
+
+      await _rides.doc(rideCode).update({
+        'stops': updatedStops.map((s) => s.toMap()).toList(),
+      });
+    } catch (e) {
+      debugPrint('removeStop error: $e');
+    }
+  }
+
+  Future<void> reorderStops(String rideCode, List<LocationPoint> stops) async {
+    try {
+      await _rides.doc(rideCode).update({
+        'stops': stops.map((s) => s.toMap()).toList(),
+      });
+    } catch (e) {
+      debugPrint('reorderStops error: $e');
+    }
+  }
+
+  Future<void> _saveActiveRide(String rideCode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyActiveRideCode, rideCode);
+  }
+
+  Future<void> clearActiveRide() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyActiveRideCode);
+  }
+
+  Future<RideModel?> getActiveRide() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final code  = prefs.getString(_keyActiveRideCode);
+      if (code == null || code.isEmpty) return null;
+
+      final doc = await _rides.doc(code).get();
+      if (!doc.exists) { await clearActiveRide(); return null; }
+
+      final ride = RideModel.fromMap(doc.data()!);
+      if (ride.status == RideStatus.completed) {
+        await clearActiveRide();
+        return null;
+      }
+
+      return ride;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ─── Join Ride ────────────────────────────────────────────────────────────
 
   Future<RideModel?> joinRide(String code) async {
     try {
       final user = UserService.to;
-      final myUserId = _generateUserId();
+      final myUserId = UserService.to.userId;
 
       final doc = await _rides.doc(code).get();
 
@@ -191,6 +293,7 @@ class RideService extends GetxService {
       // Start continuous tracking
       await startLocationStream(code, myUserId);
 
+      await _saveActiveRide(code);
       // Return updated ride
       return RideModel.fromMap({
         ...doc.data()!,

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class LocationPoint {
   final double lat;
@@ -31,6 +32,7 @@ class RideModel {
   final String creatorId;
   final LocationPoint startLocation;
   final LocationPoint endLocation;
+  final List<LocationPoint> stops;     // ← NEW
   final RideStatus status;
   final Map<String, RideMember> members;
   final DateTime createdAt;
@@ -40,53 +42,59 @@ class RideModel {
     required this.creatorId,
     required this.startLocation,
     required this.endLocation,
+    this.stops = const [],              // ← optional, defaults empty
     required this.status,
     required this.members,
     required this.createdAt,
   });
 
   Map<String, dynamic> toMap() => {
-        'code': code,
-        'creatorId': creatorId,
-        'startLocation': startLocation.toMap(),
-        'endLocation': endLocation.toMap(),
-        'status': status.name,
-        'members': members.map((k, v) => MapEntry(k, v.toMap())),
-        'createdAt': Timestamp.fromDate(createdAt),
-      };
+    'code': code,
+    'creatorId': creatorId,
+    'startLocation': startLocation.toMap(),
+    'endLocation': endLocation.toMap(),
+    'stops': stops.map((s) => s.toMap()).toList(), // ← NEW
+    'status': status.name,
+    'members': members.map((k, v) => MapEntry(k, v.toMap())),
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
 
   factory RideModel.fromMap(Map<String, dynamic> map) => RideModel(
-        code: map['code'] ?? '',
-        creatorId: map['creatorId'] ?? '',
-        startLocation: LocationPoint.fromMap(
-          Map<String, dynamic>.from(map['startLocation'] ?? {}),
-        ),
-        endLocation: LocationPoint.fromMap(
-          Map<String, dynamic>.from(map['endLocation'] ?? {}),
-        ),
-        status: RideStatus.values.firstWhere(
+    code: map['code'] ?? '',
+    creatorId: map['creatorId'] ?? '',
+    startLocation: LocationPoint.fromMap(
+      Map<String, dynamic>.from(map['startLocation'] ?? {}),
+    ),
+    endLocation: LocationPoint.fromMap(
+      Map<String, dynamic>.from(map['endLocation'] ?? {}),
+    ),
+    stops: (map['stops'] as List<dynamic>? ?? [])  // ← NEW
+        .map((s) => LocationPoint.fromMap(Map<String, dynamic>.from(s)))
+        .toList(),
+    status: RideStatus.values.firstWhere(
           (e) => e.name == map['status'],
-          orElse: () => RideStatus.waiting,
-        ),
-        members: (map['members'] as Map<String, dynamic>? ?? {}).map(
+      orElse: () => RideStatus.waiting,
+    ),
+    members: (map['members'] as Map<String, dynamic>? ?? {}).map(
           (k, v) => MapEntry(k, RideMember.fromMap(Map<String, dynamic>.from(v))),
-        ),
-        createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      );
+    ),
+    createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+  );
 
   RideModel copyWith({
     RideStatus? status,
     Map<String, RideMember>? members,
-  }) =>
-      RideModel(
-        code: code,
-        creatorId: creatorId,
-        startLocation: startLocation,
-        endLocation: endLocation,
-        status: status ?? this.status,
-        members: members ?? this.members,
-        createdAt: createdAt,
-      );
+    List<LocationPoint>? stops,         // ← NEW
+  }) => RideModel(
+    code: code,
+    creatorId: creatorId,
+    startLocation: startLocation,
+    endLocation: endLocation,
+    stops: stops ?? this.stops,         // ← NEW
+    status: status ?? this.status,
+    members: members ?? this.members,
+    createdAt: createdAt,
+  );
 }
 
 class RideMember {
@@ -111,6 +119,22 @@ class RideMember {
         name: map['name'] ?? 'Rider',
         joinedAt: (map['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       );
+}
+
+class RouteOption {
+  final List<LatLng> points;
+  final String       duration;
+  final String       distance;
+  final String       summary;
+  final int          durationSeconds;
+
+  const RouteOption({
+    required this.points,
+    required this.duration,
+    required this.distance,
+    required this.summary,
+    required this.durationSeconds,
+  });
 }
 
 class MemberLocation {
