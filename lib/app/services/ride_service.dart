@@ -14,6 +14,7 @@ import 'user_service.dart';
 
 class RideService extends GetxService {
   static RideService get to => Get.find();
+  static const int maxRideMembers = 10;
 
   final _firestore = FirebaseFirestore.instance;
   final FirebaseDatabase _rtdb = FirebaseDatabase.instanceFor(
@@ -48,7 +49,7 @@ class RideService extends GetxService {
 
       final creator = RideMember(
         userId: myUserId,
-        name: user.userName,
+        name: user.userName.value,
         joinedAt: DateTime.now(),
       );
 
@@ -102,7 +103,7 @@ class RideService extends GetxService {
 
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10,
+      distanceFilter: 15,
     );
 
     _positionSub = Geolocator.getPositionStream(
@@ -254,11 +255,11 @@ class RideService extends GetxService {
       }
 
       // Prevent over-capacity
-      if (ride.members.length >= 2 &&
+      if (ride.members.length >= maxRideMembers &&
           !ride.members.containsKey(myUserId)) {
         Get.snackbar(
           'Ride Full',
-          'This ride already has 2 participants.',
+          'This ride already has $maxRideMembers participants.',
         );
         return null;
       }
@@ -272,7 +273,7 @@ class RideService extends GetxService {
       // Add current user
       updatedMembers[myUserId] = RideMember(
         userId: myUserId,
-        name: user.userName,
+        name: user.userName.value,
         joinedAt: DateTime.now(),
       ).toMap();
 

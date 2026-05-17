@@ -18,6 +18,7 @@ class ActiveRideView extends GetView<ActiveRideController> {
           _buildLeftActions(),
           _buildRightActions(),
           _buildBottomBar(),
+          _buildReCentreButton(),
           _buildRideCodeBadge(),
         ],
       ),
@@ -28,25 +29,21 @@ class ActiveRideView extends GetView<ActiveRideController> {
 
   Widget _buildMap() {
     return Obx(() {
-      // Reading polylineVersion registers it as a dependency.
-      // It always increments so Obx always fires when polylines change.
       final _ = controller.polylineVersion.value;
-
       return GoogleMap(
         key: const ValueKey('active_ride_map'),
         onMapCreated: controller.onMapCreated,
         mapType: controller.mapType.value,
+        onCameraMove: controller.onMapCameraMove, // ← add this
         initialCameraPosition: CameraPosition(
           target: LatLng(
             controller.ride.startLocation.lat,
             controller.ride.startLocation.lng,
           ),
-          zoom: 17,
-          tilt: 50,
-          bearing: 0,
+          zoom: 14,
         ),
         markers:   Set<Marker>.of(controller.markers.values),
-        polylines: controller.currentPolylines.toSet(),  // ← plain field, no equality trap
+        polylines: controller.currentPolylines,
         myLocationEnabled: true,
         myLocationButtonEnabled: false,
         compassEnabled: false,
@@ -54,6 +51,55 @@ class ActiveRideView extends GetView<ActiveRideController> {
     });
   }
   // ─── Nav banner (instruction + distance) ─────────────────────────────────
+
+  // ── Add this method ───────────────────────────────────────────────────────
+  Widget _buildReCentreButton() {
+    return Obx(() {
+      if (controller.isFollowingMe.value) return const SizedBox.shrink();
+
+      return Positioned(
+        right: 16,
+        bottom: 120,
+        child: GestureDetector(
+          onTap: controller.recentre,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.25),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(
+                  Icons.navigation_rounded,
+                  color: Color(0xFF007AFF),
+                  size: 18,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Recentre',
+                  style: TextStyle(
+                    color: Color(0xFF007AFF),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+  }
 
   Widget _buildNavBanner() {
     return Positioned(
@@ -157,6 +203,7 @@ class ActiveRideView extends GetView<ActiveRideController> {
 
   void _showStopsPanel(BuildContext context) {
     Get.bottomSheet(
+      // enableDrag: false,
       StatefulBuilder(
         builder: (context, setState) {
           return Obx(() => Container(
@@ -247,10 +294,13 @@ class ActiveRideView extends GetView<ActiveRideController> {
                     constraints: const BoxConstraints(maxHeight: 300),
                     child: ReorderableListView.builder(
                       shrinkWrap: true,
+                      physics: const ClampingScrollPhysics(),
+                      buildDefaultDragHandles: false,
                       onReorder: (oldIndex, newIndex) {
+                        print("299");
                         if (!controller.isCreator.value) return;
                         final list = [...controller.stops];
-                        if (newIndex > oldIndex) newIndex--;
+                        if (newIndex > oldIndex) newIndex--;  // ← this is correct, keep it
                         final item = list.removeAt(oldIndex);
                         list.insert(newIndex, item);
                         controller.reorderStops(list);
@@ -260,7 +310,7 @@ class ActiveRideView extends GetView<ActiveRideController> {
                         final stop    = controller.stops[i];
                         final reached = i < controller.currentStopIndex.value;
                         return ListTile(
-                          key: ValueKey('stop_$i'),
+                          key: ValueKey('${stop.lat}_${stop.lng}'),
                           contentPadding: EdgeInsets.zero,
                           leading: Container(
                             width: 32, height: 32,
@@ -313,13 +363,11 @@ class ActiveRideView extends GetView<ActiveRideController> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               GestureDetector(
-                                onTap: () =>
-                                    controller.removeStop(i),
+                                onTap: () => controller.removeStop(i),
                                 child: Container(
                                   padding: const EdgeInsets.all(6),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.sos
-                                        .withOpacity(0.1),
+                                    color: AppTheme.sos.withOpacity(0.1),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(
@@ -330,9 +378,15 @@ class ActiveRideView extends GetView<ActiveRideController> {
                                 ),
                               ),
                               const SizedBox(width: 6),
-                              const Icon(Icons.drag_handle_rounded,
+
+                              ReorderableDragStartListener(
+                                index: i,
+                                child: const Icon(
+                                  Icons.drag_handle_rounded,
                                   color: AppTheme.textSecondary,
-                                  size: 20),
+                                  size: 30,
+                                ),
+                              ),
                             ],
                           )
                               : null,
@@ -441,7 +495,7 @@ class ActiveRideView extends GetView<ActiveRideController> {
           Obx(() {
             final isSatellite = controller.mapType.value == MapType.satellite;
             return _RoundButton(
-              icon: isSatellite ? Icons.map_rounded : Icons.satellite_alt_rounded,
+              icon: isSatellite ? Icons.map_rounded : Icons.satellite_alt_sharp,
               onTap: controller.toggleMapType,
               isActive: isSatellite,
               tooltip: isSatellite ? 'Normal view' : 'Satellite view',
@@ -449,28 +503,22 @@ class ActiveRideView extends GetView<ActiveRideController> {
           }),
           const SizedBox(height: 10),
           _RoundButton(
-            icon: Icons.add_rounded,
-            onTap: controller.zoomIn,
-            tooltip: 'Zoom in',
-          ),
-          const SizedBox(height: 4),
-          _RoundButton(
-            icon: Icons.remove_rounded,
+            icon: Icons.zoom_out_map_outlined,
             onTap: controller.zoomOut,
             tooltip: 'Zoom out',
           ),
-          const SizedBox(height: 10),
 
-          // ── Existing buttons — unchanged ──────────────────────────────
+          const SizedBox(height: 4),
           _RoundButton(
-            icon: Icons.notifications_outlined,
-            onTap: () {},
+            icon: Icons.zoom_in_map_outlined,
+            onTap: controller.zoomIn,
+            tooltip: 'Zoom in',
           ),
-          const SizedBox(height: 10),
-          _RoundButton(
-            icon: Icons.volume_up_outlined,
-            onTap: () {},
-          ),
+          // const SizedBox(height: 10),
+          // _RoundButton(
+          //   icon: Icons.volume_up_outlined,
+          //   onTap: () {},
+          // ),
           const SizedBox(height: 10),
           Obx(() => _RoundButton(
             icon: Icons.group_outlined,
@@ -497,14 +545,14 @@ class ActiveRideView extends GetView<ActiveRideController> {
           const SizedBox(height: 10),
           Obx(() => _RoundButton(
             icon: controller.isFollowingMe.value
-                ? Icons.my_location_rounded
-                : Icons.location_searching_rounded,
+                ? Icons.gps_fixed_rounded
+                : Icons.gps_not_fixed_rounded,
             onTap: controller.toggleFollowMe,
             isActive: controller.isFollowingMe.value,
           )),
           const SizedBox(height: 10),
           _RoundButton(
-            icon: Icons.fit_screen_rounded,
+            icon: Icons.blur_circular,
             onTap: controller.fitAllRiders,
           ),
         ],

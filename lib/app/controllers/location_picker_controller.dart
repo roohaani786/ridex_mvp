@@ -367,12 +367,17 @@ class LocationPickerController extends GetxController {
       debugPrint('Map style warning: $e');
     }
   }
-// ── Update onMapCreated to apply dark theme on load ────────────────────────
+
   void onMapCreated(GoogleMapController controller) async {
     mapController = controller;
     _mapReady = true;
-    _applyMapTheme(); // ← apply dark immediately on open
-    await _goToCurrentLocation();
+
+    _applyMapTheme();
+
+    // Give map + permission flow time to settle
+    Future.delayed(const Duration(milliseconds: 700), () async {
+      await _goToCurrentLocation();
+    });
   }
 
   void zoomIn()  => mapController?.animateCamera(CameraUpdate.zoomIn());
@@ -391,6 +396,7 @@ class LocationPickerController extends GetxController {
 
   Future<void> _goToCurrentLocation() async {
     try {
+
       isLoadingLocation.value = true;
       final granted = await LocationService.to.ensurePermissions();
       if (!granted) return;
@@ -399,7 +405,7 @@ class LocationPickerController extends GetxController {
       for (final timeout in [5, 10, 15]) {
         try {
           final candidate = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.bestForNavigation,
+            desiredAccuracy: LocationAccuracy.high,
             timeLimit: Duration(seconds: timeout),
           );
           if (candidate.accuracy <= 30.0) { pos = candidate; break; }
@@ -414,8 +420,14 @@ class LocationPickerController extends GetxController {
 
       if (!_mapReady || mapController == null) return;
       await mapController!.animateCamera(
-        CameraUpdate.newCameraPosition(CameraPosition(target: latLng, zoom: 17)),
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: latLng,
+            zoom: 17,
+          ),
+        ),
       );
+      await Future.delayed(const Duration(milliseconds: 300));
       _isProgrammaticMove = false;
       await _reverseGeocode(latLng);
       loadRiderPois(latLng);

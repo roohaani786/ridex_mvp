@@ -122,14 +122,16 @@ class RideMember {
 }
 
 class RouteOption {
-  final List<LatLng> points;
-  final String       duration;
-  final String       distance;
-  final String       summary;
-  final int          durationSeconds;
+  final List<LatLng> points;          // full overview (still needed for base route)
+  final List<List<LatLng>> legPoints; // ← NEW: per-leg polylines
+  final String duration;
+  final String distance;
+  final String summary;
+  final int    durationSeconds;
 
   const RouteOption({
     required this.points,
+    required this.legPoints,           // ← NEW
     required this.duration,
     required this.distance,
     required this.summary,

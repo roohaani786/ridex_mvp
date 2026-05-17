@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/home_controller.dart';
+import '../services/user_service.dart';
 import '../theme/app_theme.dart';
 
 class HomeView extends GetView<HomeController> {
@@ -67,22 +68,35 @@ class HomeView extends GetView<HomeController> {
             ],
           ),
           const Spacer(),
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+          GestureDetector(
+            onTap: () => controller.showNameDialog(isEdit: true),
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.1),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Obx(() => Text(
+                  UserService.to.userName.value.isNotEmpty
+                      ? UserService.to.userName.value[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: AppTheme.primary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                )),
+              ),
             ),
-            child: const Icon(Icons.person_outline_rounded,
-                color: AppTheme.textSecondary, size: 22),
           ),
         ],
       ),

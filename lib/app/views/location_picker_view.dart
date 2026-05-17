@@ -275,7 +275,7 @@ class LocationPickerView extends GetView<LocationPickerController> {
 
           // ── Zoom in ───────────────────────────────────────────────────
           MapControlButton(
-            icon: Icons.add_rounded,
+            icon: Icons.zoom_in_map_outlined,
             tooltip: 'Zoom in',
             onTap: controller.zoomIn,
           ),
@@ -283,7 +283,7 @@ class LocationPickerView extends GetView<LocationPickerController> {
 
           // ── Zoom out ──────────────────────────────────────────────────
           MapControlButton(
-            icon: Icons.remove_rounded,
+            icon: Icons.zoom_out_map_outlined,
             tooltip: 'Zoom out',
             onTap: controller.zoomOut,
           ),
